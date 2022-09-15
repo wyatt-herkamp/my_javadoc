@@ -11,6 +11,9 @@ use reqwest::{Client, ClientBuilder};
 use tokio::fs::{OpenOptions, remove_dir, remove_file};
 use tokio::io::AsyncWriteExt;
 use futures_util::StreamExt;
+use maven_rs::maven_metadata::DeployMetadata;
+use maven_rs::quick_xml::de;
+use maven_rs::snapshot_metadata::SnapshotMetadata;
 use tokio::sync::mpsc::Receiver;
 use crate::Error;
 use crate::project::{Project, Version};
@@ -113,44 +116,93 @@ pub async fn process_project(project_request: ProjectRequest, client: &Client) -
     };
 
     if should_update {
-        if version_text.ends_with("-SNAPSHOT") {} else {
-            let url = format!("{}/{project_path}/{version_text}/{}-{version_text}-javadoc.jar", project_request.repository.address, &deploy_data.artifact_id);
+        if version_text.ends_with("-SNAPSHOT") {
+            let url = format!("{}/{project_path}/{version_text}/maven-metadata.xml", project_request.repository.address);
             let response = client.get(&url).send().await?;
             if response.status().is_success() {
-                let download_jar = project_location.join(format!("{}.jar", version_text));
-                if download_jar.exists() {
-                    remove_file(&download_jar).await?;
+                let string = response.text().await?;
+                let maven_file = project_location.join(version_text);
+                if !maven_file.exists() {
+                    tokio::fs::create_dir_all(&maven_file).await?;
                 }
-                let mut file = OpenOptions::new().write(true).create(true).open(&download_jar).await?;
-                let mut stream = response.bytes_stream();
-
-                while let Some(item) = stream.next().await {
-                    let chunk: Bytes = item?;
-                    file.write_all(chunk.as_ref()).await?;
+                let maven_file = maven_file.join("maven-metadata.xml");
+                OpenOptions::new().write(true).create(true).open(&maven_file).await?.write_all(string.as_bytes()).await?;
+                let metadata: SnapshotMetadata = de::from_str(&string)?;
+                if let Some(javadoc_timestamp) = javadoc_project.versions.get(version_text) {
+                    if let Version::BuildSnapshot { timestamp, .. } = javadoc_timestamp {
+                        if let Some(snapshot) = metadata.versioning.snapshot {
+                            if snapshot.timestamp.as_ref().eq(&Some(timestamp)) {
+                                // The timestamp is the same, so we don't need to rebuild
+                                return Ok(());
+                            }
+                        }
+                    }
                 }
-                let output_folder = project_location.join(version_text);
-                if output_folder.exists() && !output_folder.is_dir() {
-                    remove_file(&output_folder).await?;
+                if let Some(value) = metadata.versioning.snapshot_versions {
+                    let option = value.snapshot_version.into_iter().find(|x| {
+                        if let Some(x) = x.classifier.as_ref() {
+                            x.eq("javadoc")
+                        } else {
+                            false
+                        }
+                    });
+                    if let Some(value) = option {
+                        if build_javadoc(&project_request, client, &project_location, &deploy_data, &version_text, &value.value).await? {
+                            javadoc_project.versions.insert(version_text.to_string(), Version::BuildSnapshot {
+                                path: project_location.join(version_text),
+                                timestamp: value.updated.unwrap_or(now.clone()),
+                                built: now,
+                            });
+                        } else {
+                            info!("Failed to build javadoc for snapshot");
+                        }
+                    }
                 }
-                if !output_folder.exists() {
-                    tokio::fs::create_dir(&output_folder).await?;
-                }
-                crate::zip::extract(&output_folder, &download_jar)?;
+            }
+        } else {
+            if build_javadoc(&project_request, client, &project_location, &deploy_data, version_text, version_text).await? {
                 javadoc_project.versions.insert(version_text.to_string(), Version::Build {
-                    path: output_folder,
+                    path: project_location.join(version_text),
                     sha1: None,
-                    built: now
+                    built: now,
                 });
-
-
             } else {
                 javadoc_project.versions.insert(version_text.to_string(), Version::NoBuild { checked: now });
-                error!("Failed to download javadoc for {project} {version}", project = project_request.project, version = version_text);
-            }
+            };
         }
     }
     project_request.repository.save_project(javadoc_project).await?;
     Ok(())
 }
 
+async fn build_javadoc(project_request: &ProjectRequest, client: &Client, project_location: &PathBuf, deploy_data: &DeployMetadata, version: impl AsRef<str>, version_text: &String) -> Result<bool, Error> {
+    let project_path = project_to_path(&project_request.project);
+    let url = format!("{}/{project_path}/{version}/{}-{version_text}-javadoc.jar", project_request.repository.address, &deploy_data.artifact_id, version = version.as_ref());
+    let response = client.get(&url).send().await?;
+    if response.status().is_success() {
+        let download_jar = project_location.join(format!("{}.jar", version_text));
+        if download_jar.exists() {
+            remove_file(&download_jar).await?;
+        }
+        let mut file = OpenOptions::new().write(true).create(true).open(&download_jar).await?;
+        let mut stream = response.bytes_stream();
+
+        while let Some(item) = stream.next().await {
+            let chunk: Bytes = item?;
+            file.write_all(chunk.as_ref()).await?;
+        }
+        let output_folder = project_location.join(version.as_ref());
+        if output_folder.exists() && !output_folder.is_dir() {
+            remove_file(&output_folder).await?;
+        }
+        if !output_folder.exists() {
+            tokio::fs::create_dir(&output_folder).await?;
+        }
+        crate::zip::extract(&output_folder, &download_jar)?;
+        Ok(true)
+    } else {
+        error!("Failed to download javadoc for {project} {version}", project = project_request.project, version = version_text);
+        Ok(false)
+    }
+}
 
