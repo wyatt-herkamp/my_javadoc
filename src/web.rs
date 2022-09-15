@@ -81,7 +81,7 @@ async fn start_multi_server(config: Config, queue: Data<Sender<ProjectRequest>>)
                     .supports_credentials(),
             )
             .wrap(Logger::default())
-            .service(crate::multi::get_javadoc)
+            .configure(crate::multi::register_web)
     });
 
 

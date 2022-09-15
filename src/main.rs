@@ -3,6 +3,7 @@ pub(crate) mod project_processor;
 pub(crate) mod single;
 pub(crate) mod multi;
 pub(crate) mod repository;
+pub(crate) mod project;
 
 use std::collections::HashMap;
 use std::env::{current_dir, set_var};
@@ -13,8 +14,11 @@ use std::process::exit;
 use serde::{Deserialize, Serialize};
 use clap::{Parser, Subcommand};
 use log::info;
+use maven_rs::quick_xml::DeError;
 use nitro_log::LoggerBuilders;
 use rust_embed::RustEmbed;
+use this_actix_error::ActixError;
+use thiserror::Error;
 
 static CONFIG: &str = "my_javadoc.toml";
 
@@ -67,6 +71,21 @@ enum MyJavaDocSubCommand {
 
 }
 
+#[derive(Debug, Error, ActixError)]
+pub enum Error {
+    #[error(transparent)]
+    IO(#[from] std::io::Error),
+    #[error(transparent)]
+    Reqwest(#[from] reqwest::Error),
+    #[error(transparent)]
+    Maven(#[from] maven_rs::Error),
+    #[error(transparent)]
+    Serde(#[from] serde_json::Error),
+    #[error(transparent)]
+    XMLError(#[from] DeError),
+}
+
+
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
     let args: MyJavaDoc = MyJavaDoc::parse();
@@ -94,7 +113,7 @@ async fn main() -> std::io::Result<()> {
     }
     if let Some(log_location) = init_settings.log_location.as_ref() {
         set_var("LOG_LOCATION", log_location.as_os_str());
-    }else{
+    } else {
         set_var("LOG_LOCATION", current_dir().unwrap().join("logs").as_os_str());
     }
     match args.command {
