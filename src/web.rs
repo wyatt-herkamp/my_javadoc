@@ -6,7 +6,8 @@ use actix_web::web::Data;
 use tokio::sync::mpsc::{channel, Sender};
 use tux_lockfree::queue::Queue;
 use crate::Config;
-use crate::project_processor::{ProjectRequest, Repository};
+use crate::project_processor::{ProjectRequest};
+use crate::repository::Repository;
 
 macro_rules! start {
     ($server:tt,$config:tt) => {
@@ -23,17 +24,17 @@ macro_rules! start {
                 .set_private_key_file(private, SslFiletype::PEM)
                 .unwrap();
             builder.set_certificate_chain_file(cert).unwrap();
-            return $server.bind_openssl($config.bind_address, builder)?.run().await;
+             $server.bind_openssl($config.bind_address, builder)?.run().await?;
         }
     }
 
-        $server.bind($config.bind_address)?.run().await;
+        $server.bind($config.bind_address)?.run().await?;
     }
 }
 pub(crate) async fn start(config: Config) -> std::io::Result<()> {
     let (sender, receiver) = channel(100);
     let queue = Data::new(sender);
-    tokio::spawn(crate::project_processor::processor(receiver));
+    tokio::spawn(crate::project_processor::processor(config.cache.clone(), receiver));
     if config.single_repo {
         start_single_server(config, queue).await
     } else {
@@ -43,7 +44,7 @@ pub(crate) async fn start(config: Config) -> std::io::Result<()> {
 
 async fn start_single_server(config: Config, queue: Data<Sender<ProjectRequest>>) -> std::io::Result<()> {
     let repository = config.repositories.into_iter().next().unwrap();
-    let repository = Data::new(Repository::from(repository));
+    let repository = Data::new(Repository::new(repository.0, repository.1, config.cache.clone()));
     let server = HttpServer::new(move || {
         App::new()
             .app_data(repository.clone())
@@ -63,7 +64,9 @@ async fn start_single_server(config: Config, queue: Data<Sender<ProjectRequest>>
 }
 
 async fn start_multi_server(config: Config, queue: Data<Sender<ProjectRequest>>) -> std::io::Result<()> {
-    let repositories = config.repositories.into_iter().map(|(name, data)| Arc::new(Repository::from((name, data)))).collect::<Vec<_>>();
+    let repositories = config.repositories.into_iter().map(|(name, data)| {
+        Arc::new(Repository::new(name, data, &config.cache))
+    }).collect::<Vec<_>>();
     let repositories = Data::new(repositories);
     let server = HttpServer::new(move || {
         App::new()
@@ -78,6 +81,7 @@ async fn start_multi_server(config: Config, queue: Data<Sender<ProjectRequest>>)
                     .supports_credentials(),
             )
             .wrap(Logger::default())
+            .service(crate::multi::get_javadoc)
     });
 
 

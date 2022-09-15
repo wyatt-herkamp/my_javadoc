@@ -2,6 +2,7 @@ pub(crate) mod web;
 pub(crate) mod project_processor;
 pub(crate) mod single;
 pub(crate) mod multi;
+pub(crate) mod repository;
 
 use std::collections::HashMap;
 use std::env::{current_dir, set_var};
@@ -39,6 +40,11 @@ pub struct Config {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ConfigRepository {
     pub address: String,
+    /// Does this repository allow redeploy of artifacts
+    /// If true every 24 hours a query to update the cache is made
+    #[serde(default)]
+    pub allows_redeploy: bool,
+
 }
 
 #[derive(Debug, Serialize, Deserialize)]
