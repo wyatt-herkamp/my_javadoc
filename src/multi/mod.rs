@@ -59,6 +59,12 @@ pub async fn get_javadoc(requests: web::Data<Sender<ProjectRequest>>, request: w
             }).await.map_err(|_| actix_web::error::ErrorInternalServerError("Failed to send request"))?;
             ;
         }
+        let option = version.load_file(request.file).await?;
+        if let Some(file) = option {
+            return Ok(HttpResponse::Ok().content_type(file.content_type).body(file.file));
+        } else {
+            return Err(actix_web::error::ErrorNotFound("File not found"));
+        }
     } else {
         requests.send(ProjectRequest {
             repository,
@@ -67,5 +73,4 @@ pub async fn get_javadoc(requests: web::Data<Sender<ProjectRequest>>, request: w
         }).await.map_err(|_| actix_web::error::ErrorInternalServerError("Failed to send request"))?;
         return Err(actix_web::error::ErrorNotFound("Project not found"));
     }
-    Ok(HttpResponse::Ok().body("Hello world!"))
 }

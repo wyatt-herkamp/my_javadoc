@@ -13,6 +13,9 @@ openssl = { version = "0.10", features = ["v110"], optional = true }
 actix-files = "0.6"
 handlebars = "4.3"
 tux_lockfree = { git = "https://github.com/wyatt-herkamp/tux_lockfree.git" }
+zip = { git = "https://github.com/wyatt-herkamp/zip.git" }
+futures-util = { version = "0.3"  }
+mime_guess = "2"
 rust-embed = { version = "6.4.0", features = ["interpolate-folder-path"] }
 chrono = "0.4.22"
 thiserror = "1"
@@ -26,7 +29,8 @@ lol_html = "0.3"
 clap = { version = "3", features = ["derive"] }
 # Maven Parsing
 maven-rs = { git = "https://github.com/wyatt-herkamp/maven-rs.git", features = ["reqwest"] }
-reqwest = "0.11.11"
+reqwest = { version = "0.11.11", features = ["stream"] }
+bytes = "1"
 # Logging
 nitro_log = { git = "https://github.com/wyatt-herkamp/nitro_log", features = ["chrono", "style-term"] }
 log = { version = "0.4.17", features = ["kv_unstable", "kv_unstable_std", "kv_unstable_serde"] }

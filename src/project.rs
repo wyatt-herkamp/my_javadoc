@@ -1,10 +1,12 @@
 use std::collections::HashMap;
+use std::path::PathBuf;
 use chrono::{DateTime, Utc};
+use log::debug;
 use maven_rs::maven_metadata::DeployMetadata;
 use maven_rs::quick_xml;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use tokio::fs::read_to_string;
+use tokio::fs::{read, read_to_string};
 use tokio::io::AsyncWriteExt;
 use crate::Error;
 use crate::repository::{project_to_path, Repository};
@@ -81,14 +83,21 @@ pub enum Version {
     },
     /// Contains a release version
     Build {
+        path: PathBuf,
         sha1: Option<String>,
         built: DateTime<Utc>,
     },
     /// Contains a snapshot version
     BuildSnapshot {
+        path: PathBuf,
         timestamp: DateTime<Utc>,
         built: DateTime<Utc>,
     },
+}
+
+pub struct FileResponse {
+    pub file: Vec<u8>,
+    pub content_type: String,
 }
 
 impl Version {
@@ -98,6 +107,40 @@ impl Version {
             Version::NoBuild { checked } => *checked = now,
             Version::Build { built, .. } => *built = now,
             Version::BuildSnapshot { built, .. } => *built = now,
+        }
+    }
+
+    pub async fn load_file(&self, file: Option<String>) -> Result<Option<FileResponse>, Error> {
+        let result = match self {
+            Version::NoBuild { .. } => {
+                return Ok(None);
+            }
+            Version::Build { path, .. } => {
+                path
+            }
+            Version::BuildSnapshot { path, .. } => {
+                path
+            }
+        };
+        let x = file.as_ref().and_then(|f| {
+            if f.is_empty() {
+                None
+            } else {
+                Some(f.as_str())
+            }
+        }).unwrap_or("index.html");
+        let file = result.join(x);
+
+        debug!("Loading file: {:?}", file);
+        // TODO check if HTML page and add header
+        if file.exists() {
+            let text = read(file).await?;
+            Ok(Some(FileResponse {
+                file: text,
+                content_type: mime_guess::from_path(x).first_or_octet_stream().to_string(),
+            }))
+        } else {
+            Ok(None)
         }
     }
     /// Should the system check for updates

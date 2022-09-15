@@ -4,6 +4,7 @@ pub(crate) mod single;
 pub(crate) mod multi;
 pub(crate) mod repository;
 pub(crate) mod project;
+pub(crate) mod zip;
 
 use std::collections::HashMap;
 use std::env::{current_dir, set_var};
@@ -11,6 +12,7 @@ use std::fs::read_to_string;
 use std::io::ErrorKind;
 use std::path::PathBuf;
 use std::process::exit;
+use ::zip::result::ZipError;
 use serde::{Deserialize, Serialize};
 use clap::{Parser, Subcommand};
 use log::info;
@@ -83,6 +85,8 @@ pub enum Error {
     Serde(#[from] serde_json::Error),
     #[error(transparent)]
     XMLError(#[from] DeError),
+    #[error(transparent)]
+    ZipError(#[from] ZipError),
 }
 
 
