@@ -1,0 +1,21 @@
+<header class="javadocHeader">
+    <ul>
+        <li>
+            <a title="Home">Home</a>
+        </li>
+        <li>
+            <a title="Packages">{{ package.groupId  }}</a>
+        </li>
+        <li>
+            {{ package.artifactId }}
+        </li>
+        <li class="dropDown">
+            <button>Versions</button>
+            <ul class="versionDropDown">
+                {{#each package.versions}}
+                    <li>{{this}}</li>
+                {{/each}}
+            </ul>
+        </li>
+    </ul>
+</header>
