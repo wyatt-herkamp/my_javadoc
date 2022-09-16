@@ -1,33 +1,33 @@
-pub(crate) mod web;
-pub(crate) mod project_processor;
-pub(crate) mod single;
-pub(crate) mod multi;
-pub(crate) mod repository;
-pub(crate) mod project;
-pub(crate) mod zip;
-
 use std::collections::HashMap;
 use std::env::{current_dir, set_var};
 use std::fs::read_to_string;
 use std::io::ErrorKind;
 use std::path::PathBuf;
 use std::process::exit;
+
 use ::zip::result::ZipError;
-use serde::{Deserialize, Serialize};
 use clap::{Parser, Subcommand};
 use log::info;
 use maven_rs::quick_xml::DeError;
 use nitro_log::LoggerBuilders;
 use rust_embed::RustEmbed;
+use serde::{Deserialize, Serialize};
 use this_actix_error::ActixError;
 use thiserror::Error;
+
+pub(crate) mod multi;
+pub(crate) mod project;
+pub(crate) mod project_processor;
+pub(crate) mod repository;
+pub(crate) mod single;
+pub(crate) mod web;
+pub(crate) mod zip;
 
 static CONFIG: &str = "my_javadoc.toml";
 
 #[derive(RustEmbed)]
 #[folder = "$CARGO_MANIFEST_DIR/resources"]
 pub struct Resources;
-
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Config {
@@ -50,7 +50,6 @@ pub struct ConfigRepository {
     /// If true every 24 hours a query to update the cache is made
     #[serde(default)]
     pub allows_redeploy: bool,
-
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -70,7 +69,6 @@ pub struct MyJavaDoc {
 enum MyJavaDocSubCommand {
     /// Run the server
     Run,
-
 }
 
 #[derive(Debug, Error, ActixError)]
@@ -89,7 +87,6 @@ pub enum Error {
     ZipError(#[from] ZipError),
 }
 
-
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
     let args: MyJavaDoc = MyJavaDoc::parse();
@@ -107,8 +104,8 @@ async fn main() -> std::io::Result<()> {
         let config = toml::to_string_pretty(&config).unwrap();
         std::fs::write(&main_config, config)?;
     }
-    let init_settings: Config =
-        toml::from_str(&read_to_string(&main_config)?).map_err(|v| std::io::Error::new(ErrorKind::InvalidData, v))?;
+    let init_settings: Config = toml::from_str(&read_to_string(&main_config)?)
+        .map_err(|v| std::io::Error::new(ErrorKind::InvalidData, v))?;
     if init_settings.single_repo {
         if init_settings.repositories.len() == 1 {
             println!("Single Repo is set to true but more than one repo is set");
@@ -118,11 +115,15 @@ async fn main() -> std::io::Result<()> {
     if let Some(log_location) = init_settings.log_location.as_ref() {
         set_var("LOG_LOCATION", log_location.as_os_str());
     } else {
-        set_var("LOG_LOCATION", current_dir().unwrap().join("logs").as_os_str());
+        set_var(
+            "LOG_LOCATION",
+            current_dir().unwrap().join("logs").as_os_str(),
+        );
     }
     match args.command {
         MyJavaDocSubCommand::Run => {
-            let logger: nitro_log::config::Config = serde_json::from_slice(Resources::get("log.json").unwrap().data.as_ref()).unwrap();
+            let logger: nitro_log::config::Config =
+                serde_json::from_slice(Resources::get("log.json").unwrap().data.as_ref()).unwrap();
             nitro_log::NitroLogger::load(logger, LoggerBuilders::default()).unwrap();
             info!("Starting server");
             web::start(init_settings).await?;

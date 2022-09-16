@@ -1,8 +1,9 @@
 use std::path::{Path, PathBuf};
+
 use tokio::io::AsyncWriteExt;
-use tokio::sync::mpsc::Sender;
-use crate::{ConfigRepository, Error};
+
 use crate::project::Project;
+use crate::{ConfigRepository, Error};
 
 #[derive(Debug)]
 pub struct Repository {
@@ -14,9 +15,9 @@ pub struct Repository {
 
 impl Repository {
     pub fn new(name: String, config: ConfigRepository, path: impl AsRef<Path>) -> Self {
-        let address = if config.address.ends_with("/"){
+        let address = if config.address.ends_with("/") {
             config.address.trim_end_matches("/").to_string()
-        }else{
+        } else {
             config.address
         };
         Repository {
@@ -41,7 +42,7 @@ impl Repository {
             Ok(Some(project))
         }
     }
-    pub async fn save_project(&self, project: Project)->Result<(), Error>{
+    pub async fn save_project(&self, project: Project) -> Result<(), Error> {
         let project_cache = self.path.join(project_to_path(project.name.as_str()));
         if !project_cache.exists() {
             tokio::fs::create_dir_all(&project_cache).await?;

@@ -1,15 +1,12 @@
 use std::fs;
 use std::fs::OpenOptions;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+
 use log::debug;
 
 use crate::Error;
 
-pub fn extract(
-    extract_to: impl AsRef<Path>,
-    archive: impl AsRef<Path>,
-) -> Result<(), Error>
-{
+pub fn extract(extract_to: impl AsRef<Path>, archive: impl AsRef<Path>) -> Result<(), Error> {
     let file = std::fs::File::open(&archive)?;
 
     let mut archive = zip::ZipArchive::new(file)?;
@@ -17,9 +14,7 @@ pub fn extract(
     for i in 0..archive.len() {
         let mut file = archive.by_index(i)?;
         let outpath = match file.enclosed_name() {
-            Some(path) => {
-                extract_to.as_ref().join(path)
-            }
+            Some(path) => extract_to.as_ref().join(path),
             None => continue,
         };
 

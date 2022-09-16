@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
+
 use chrono::{DateTime, Utc};
 use log::debug;
 use maven_rs::maven_metadata::DeployMetadata;
@@ -8,8 +9,9 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use tokio::fs::{read, read_to_string};
 use tokio::io::AsyncWriteExt;
-use crate::Error;
+
 use crate::repository::{project_to_path, Repository};
+use crate::Error;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Project {
@@ -48,10 +50,17 @@ impl Project {
         true
     }
 
-
-    pub async fn download_deploy_data(&self, repository: impl AsRef<Repository>, client: &Client) -> Result<DeployMetadata, Error> {
+    pub async fn download_deploy_data(
+        &self,
+        repository: impl AsRef<Repository>,
+        client: &Client,
+    ) -> Result<DeployMetadata, Error> {
         let project_path = project_to_path(self.name.as_str());
-        let url = format!("{}/{}/maven-metadata.xml", repository.as_ref().address, project_path);
+        let url = format!(
+            "{}/{}/maven-metadata.xml",
+            repository.as_ref().address,
+            project_path
+        );
         let response = client.get(&url).send().await?;
         let response = response.error_for_status()?;
         let text = response.text().await?;
@@ -66,21 +75,28 @@ impl Project {
     }
 
     #[inline(always)]
-    pub async fn get_deploy_data(&self, repository: impl AsRef<Repository>) -> Result<DeployMetadata, Error> {
+    pub async fn get_deploy_data(
+        &self,
+        repository: impl AsRef<Repository>,
+    ) -> Result<DeployMetadata, Error> {
         let project_path = project_to_path(self.name.as_str());
 
-        let reader = read_to_string(repository.as_ref().path.join(project_path).join("maven-metadata.xml")).await?;
+        let reader = read_to_string(
+            repository
+                .as_ref()
+                .path
+                .join(project_path)
+                .join("maven-metadata.xml"),
+        )
+        .await?;
         quick_xml::de::from_str(reader.as_str()).map_err(Error::from)
     }
 }
 
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Version {
     /// No Version Data
-    NoBuild {
-        checked: DateTime<Utc>,
-    },
+    NoBuild { checked: DateTime<Utc> },
     /// Contains a release version
     Build {
         path: PathBuf,
@@ -115,20 +131,13 @@ impl Version {
             Version::NoBuild { .. } => {
                 return Ok(None);
             }
-            Version::Build { path, .. } => {
-                path
-            }
-            Version::BuildSnapshot { path, .. } => {
-                path
-            }
+            Version::Build { path, .. } => path,
+            Version::BuildSnapshot { path, .. } => path,
         };
-        let x = file.as_ref().and_then(|f| {
-            if f.is_empty() {
-                None
-            } else {
-                Some(f.as_str())
-            }
-        }).unwrap_or("index.html");
+        let x = file
+            .as_ref()
+            .and_then(|f| if f.is_empty() { None } else { Some(f.as_str()) })
+            .unwrap_or("index.html");
         let file = result.join(x);
 
         debug!("Loading file: {:?}", file);
