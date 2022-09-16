@@ -150,16 +150,6 @@ pub async fn process_project(
                     .write_all(string.as_bytes())
                     .await?;
                 let metadata: SnapshotMetadata = de::from_str(&string)?;
-                if let Some(javadoc_timestamp) = javadoc_project.versions.get(version_text) {
-                    if let Version::BuildSnapshot { timestamp, .. } = javadoc_timestamp {
-                        if let Some(snapshot) = metadata.versioning.snapshot {
-                            if snapshot.timestamp.as_ref().eq(&Some(timestamp)) {
-                                // The timestamp is the same, so we don't need to rebuild
-                                return Ok(());
-                            }
-                        }
-                    }
-                }
                 if let Some(value) = metadata.versioning.snapshot_versions {
                     let option = value.snapshot_version.into_iter().find(|x| {
                         if let Some(x) = x.classifier.as_ref() {
@@ -169,6 +159,16 @@ pub async fn process_project(
                         }
                     });
                     if let Some(value) = option {
+                        if let Some(javadoc_version) = javadoc_project.versions.get(version_text){
+                            if let Version::BuildSnapshot { timestamp, .. } = javadoc_version {
+                                if let Some(snapshot) = metadata.versioning.snapshot {
+                                    if snapshot.timestamp.as_ref().eq(&Some(timestamp)) {
+                                        // The timestamp is the same, so we don't need to rebuild
+                                        return Ok(());
+                                    }
+                                }
+                            }
+                        }
                         if build_javadoc(
                             &project_request,
                             client,
@@ -217,6 +217,7 @@ pub async fn process_project(
                 .insert(version_text.to_string(), Version::NoBuild { checked: now });
         }
     }
+
     project_request
         .repository
         .save_project(javadoc_project)

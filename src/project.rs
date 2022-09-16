@@ -3,6 +3,7 @@ use std::path::PathBuf;
 
 use chrono::{DateTime, Utc};
 use log::debug;
+use lol_html::{HtmlRewriter, Settings};
 use maven_rs::maven_metadata::DeployMetadata;
 use maven_rs::quick_xml;
 use reqwest::Client;
@@ -11,7 +12,8 @@ use tokio::fs::{read, read_to_string};
 use tokio::io::AsyncWriteExt;
 
 use crate::repository::{project_to_path, Repository};
-use crate::Error;
+use crate::{Error, Resources};
+use crate::html::rewrite_html;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Project {
@@ -40,10 +42,10 @@ impl Project {
         }
     }
     /// Rather or not should we update the project
-    pub fn should_update(&self, _repository: impl AsRef<Repository>) -> bool {
+    pub fn should_update(&self, repository: impl AsRef<Repository>) -> bool {
         if let Some(last_updated) = self.last_updated {
             let now = Utc::now();
-            if (now - last_updated).num_hours() > 24 {
+            if (now - last_updated).num_hours() >= repository.as_ref().cache.time_til_update as i64 {
                 return true;
             }
         }
@@ -88,7 +90,7 @@ impl Project {
                 .join(project_path)
                 .join("maven-metadata.xml"),
         )
-        .await?;
+            .await?;
         quick_xml::de::from_str(reader.as_str()).map_err(Error::from)
     }
 }
@@ -141,34 +143,42 @@ impl Version {
         let file = result.join(x);
 
         debug!("Loading file: {:?}", file);
-        // TODO check if HTML page and add header
-        if file.exists() {
-            let text = read(file).await?;
-            Ok(Some(FileResponse {
-                file: text,
-                content_type: mime_guess::from_path(x).first_or_octet_stream().to_string(),
-            }))
+        let text = if file.exists() {
+            let content = read(&file).await?;
+            if file.extension().map(|e| e == "html").unwrap_or(false) {
+                debug!("Rewriting HTML");
+                // TODO rewrite_html(&content).unwrap()
+                content
+            } else {
+                content
+            }
         } else {
-            Ok(None)
-        }
+            return Ok(None);
+        };
+        Ok(Some(FileResponse {
+            file: text,
+            content_type: mime_guess::from_path(x).first_or_octet_stream().to_string(),
+        }))
     }
+
+
     /// Should the system check for updates
-    pub fn should_be_sent_for_rebuilding(&self, _repo: impl AsRef<Repository>) -> bool {
+    pub fn should_be_sent_for_rebuilding(&self, repo: impl AsRef<Repository>) -> bool {
         let now = Utc::now();
 
         match self {
             Version::NoBuild { checked } => {
                 let difference = *checked - now;
-                difference.num_hours() >= 24
+                difference.num_hours() >= repo.as_ref().cache.time_til_update as i64
             }
             Version::Build { built, .. } => {
                 //TODO take the repository's update policy into account
                 let difference = *built - now;
-                difference.num_hours() >= 24
+                difference.num_hours() >= repo.as_ref().cache.time_til_update as i64
             }
             Version::BuildSnapshot { built, .. } => {
                 let difference = *built - now;
-                difference.num_hours() >= 24
+                difference.num_hours() >= repo.as_ref().cache.time_til_update as i64
             }
         }
     }

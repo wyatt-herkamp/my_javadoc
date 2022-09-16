@@ -4,11 +4,12 @@ use actix_cors::Cors;
 use actix_web::middleware::{DefaultHeaders, Logger};
 use actix_web::web::Data;
 use actix_web::{App, HttpServer};
+use handlebars::Handlebars;
 use tokio::sync::mpsc::{channel, Sender};
 
 use crate::project_processor::ProjectRequest;
 use crate::repository::Repository;
-use crate::Config;
+use crate::{Config, site, Templates};
 
 macro_rules! start {
     ($server:tt,$config:tt) => {
@@ -42,10 +43,13 @@ pub(crate) async fn start(config: Config) -> std::io::Result<()> {
         config.cache.clone(),
         receiver,
     ));
+
+    let mut reg = Handlebars::new();
+    reg.register_embed_templates::<Templates>().unwrap();
     if config.single_repo {
         start_single_server(config, queue).await
     } else {
-        start_multi_server(config, queue).await
+        start_multi_server(config, queue, reg).await
     }
 }
 
@@ -80,6 +84,7 @@ async fn start_single_server(
 async fn start_multi_server(
     config: Config,
     queue: Data<Sender<ProjectRequest>>,
+    reg: Handlebars<'static>,
 ) -> std::io::Result<()> {
     let repositories = config
         .repositories
@@ -87,10 +92,12 @@ async fn start_multi_server(
         .map(|(name, data)| Arc::new(Repository::new(name, data, &config.cache)))
         .collect::<Vec<_>>();
     let repositories = Data::new(repositories);
+    let handlebars = Data::new(reg);
     let server = HttpServer::new(move || {
         App::new()
             .app_data(repositories.clone())
             .app_data(queue.clone())
+            .app_data(handlebars.clone())
             .wrap(DefaultHeaders::new().add(("X-Powered-By", "My Javadoc powered by Actix.rs")))
             .wrap(
                 Cors::default()
@@ -101,6 +108,7 @@ async fn start_multi_server(
             )
             .wrap(Logger::default())
             .configure(crate::multi::register_web)
+            .service(site::index)
     });
 
     start!(server, config);

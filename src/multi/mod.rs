@@ -1,7 +1,10 @@
+use std::ops::Add;
 use std::sync::Arc;
 
 use actix_web::web::ServiceConfig;
 use actix_web::{web, HttpResponse};
+use actix_web::http::header::{CACHE_CONTROL, EXPIRES};
+use chrono::{Duration, Utc};
 use serde::Deserialize;
 use tokio::sync::mpsc::Sender;
 
@@ -93,6 +96,7 @@ pub async fn get_javadoc(
         if let Some(file) = option {
             return Ok(HttpResponse::Ok()
                 .content_type(file.content_type)
+                .append_header((EXPIRES, project.last_updated.unwrap_or(Utc::now()).add(Duration::days(1)).to_rfc2822()))
                 .body(file.file));
         } else {
             return Err(actix_web::error::ErrorNotFound("File not found"));

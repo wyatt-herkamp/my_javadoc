@@ -14,6 +14,7 @@ use rust_embed::RustEmbed;
 use serde::{Deserialize, Serialize};
 use this_actix_error::ActixError;
 use thiserror::Error;
+use crate::repository::CacheRules;
 
 pub(crate) mod multi;
 pub(crate) mod project;
@@ -22,12 +23,17 @@ pub(crate) mod repository;
 pub(crate) mod single;
 pub(crate) mod web;
 pub(crate) mod zip;
+pub(crate) mod html;
+pub(crate) mod site;
 
 static CONFIG: &str = "my_javadoc.toml";
 
 #[derive(RustEmbed)]
 #[folder = "$CARGO_MANIFEST_DIR/resources"]
 pub struct Resources;
+#[derive(RustEmbed)]
+#[folder = "$CARGO_MANIFEST_DIR/templates"]
+pub struct Templates;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Config {
@@ -50,6 +56,8 @@ pub struct ConfigRepository {
     /// If true every 24 hours a query to update the cache is made
     #[serde(default)]
     pub allows_redeploy: bool,
+    #[serde(default)]
+    pub cache: CacheRules
 }
 
 #[derive(Debug, Serialize, Deserialize)]

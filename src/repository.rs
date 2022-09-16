@@ -1,4 +1,6 @@
 use std::path::{Path, PathBuf};
+use log::info;
+use serde::{Deserialize, Serialize};
 
 use tokio::io::AsyncWriteExt;
 
@@ -11,6 +13,22 @@ pub struct Repository {
     pub address: String,
     pub allows_redeploy: bool,
     pub path: PathBuf,
+    pub cache: CacheRules,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CacheRules {
+    /// Amount of time in hours
+    pub time_til_update: u64,
+
+}
+
+impl Default for CacheRules {
+    fn default() -> Self {
+        Self {
+            time_til_update: 24,
+        }
+    }
 }
 
 impl Repository {
@@ -23,8 +41,9 @@ impl Repository {
         Repository {
             path: path.as_ref().join(&name),
             name,
-            address: address,
+            address,
             allows_redeploy: config.allows_redeploy,
+            cache: config.cache,
         }
     }
     /// Returns the Project if it exists
@@ -43,6 +62,7 @@ impl Repository {
         }
     }
     pub async fn save_project(&self, project: Project) -> Result<(), Error> {
+        info!("Saving project {project:?}");
         let project_cache = self.path.join(project_to_path(project.name.as_str()));
         if !project_cache.exists() {
             tokio::fs::create_dir_all(&project_cache).await?;
